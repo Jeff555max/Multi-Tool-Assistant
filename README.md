@@ -129,6 +129,7 @@ python main.py
 | **Генерация изображений** | Google Gemini 2.5 Flash (OpenRouter) |
 | **Анализ изображений** | GPT-4o Vision |
 | **Голос** | Whisper (STT), TTS-1 |
+| **Эмбеддинги** | text-embedding-3-small |
 | **Векторная БД** | ChromaDB |
 | **Фреймворк** | LangChain |
 | **Бот** | pyTelegramBotAPI |

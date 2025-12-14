@@ -33,7 +33,8 @@ class VectorIndex:
         
         # Initialize embeddings
         self.embeddings = OpenAIEmbeddings(
-            openai_api_key=OPENAI_API_KEY
+            openai_api_key=OPENAI_API_KEY,
+            model="text-embedding-3-small"  # Новая модель: быстрее и дешевле
         )
         
         # Initialize or load vector store
