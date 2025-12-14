@@ -60,7 +60,7 @@ TTS_MODEL = "tts-1"
 VISION_MODEL = "gpt-4o"  # GPT-4o для анализа изображений
 
 # Image Generation Model (через OpenRouter)
-IMAGE_GENERATION_MODEL = "google/gemini-2.0-flash-exp:free"  # Gemini 2.5 Flash для генерации изображений
+IMAGE_GENERATION_MODEL = "google/gemini-2.5-flash-image"  # Gemini 2.5 Flash для генерации изображений
 
 # Database Configuration
 DB_PATH = BASE_DIR / os.getenv("DB_PATH", "data/embeddings.db")

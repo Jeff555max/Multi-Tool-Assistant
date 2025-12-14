@@ -117,7 +117,7 @@ async def generate_image(
     style: str = "vivid"
 ) -> Dict[str, Any]:
     """
-    Generate an image using Gemini 2.5 Flash via OpenRouter.
+    Generate an image using Gemini 2.5 Flash Image via OpenRouter.
     
     Args:
         prompt: Text description of the image to generate
@@ -129,13 +129,13 @@ async def generate_image(
         Dictionary with 'image_path', 'revised_prompt', and 'url'
     """
     try:
-        logger.info(f"Generating image with Gemini 2.5 Flash: {prompt[:100]}...")
+        logger.info(f"Generating image with Gemini 2.5 Flash Image: {prompt[:100]}...")
         
         # Prepare API request for OpenRouter
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/your-repo",
+            "HTTP-Referer": "https://github.com/Multi-Tool-Assistant",
             "X-Title": "Multi-Tool Assistant"
         }
         
@@ -144,42 +144,57 @@ async def generate_image(
             "messages": [
                 {
                     "role": "user",
-                    "content": f"Generate an image: {prompt}"
+                    "content": prompt
                 }
             ]
         }
         
         api_url = f"{OPENROUTER_BASE_URL}/chat/completions"
         
+        logger.debug(f"Sending request to OpenRouter: {api_url}")
+        
         # Make API request
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 api_url,
                 headers=headers,
-                json=payload
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=60)
             ) as response:
+                response_text = await response.text()
+                
                 if response.status != 200:
-                    error_text = await response.text()
-                    logger.error(f"OpenRouter API error: {error_text}")
-                    raise Exception(f"OpenRouter API error: {response.status}")
+                    logger.error(f"OpenRouter API error ({response.status}): {response_text}")
+                    raise Exception(f"OpenRouter API error: {response.status} - {response_text}")
                 
                 result = await response.json()
+                logger.debug(f"OpenRouter response: {result}")
         
         # Extract image URL from response
+        if 'choices' not in result or len(result['choices']) == 0:
+            raise Exception(f"Invalid response format: {result}")
+        
         content = result['choices'][0]['message']['content']
         
         # Gemini returns markdown with image URL
         import re
-        image_url_match = re.search(r'!\[.*?\]\((https://.*?)\)', content)
+        # Try different patterns
+        image_url_match = re.search(r'!\[.*?\]\((https://[^)]+)\)', content)
         if not image_url_match:
-            raise Exception("No image URL found in response")
+            # Try direct URL pattern
+            image_url_match = re.search(r'(https://[^\s]+\.(?:png|jpg|jpeg|webp))', content)
+        
+        if not image_url_match:
+            logger.error(f"No image URL found in response content: {content}")
+            raise Exception(f"No image URL found in response. Content: {content[:200]}")
         
         image_url = image_url_match.group(1)
-        
-        logger.info(f"Image generated successfully with Gemini")
+        logger.info(f"Image URL extracted: {image_url}")
         
         # Download image
         image_path = await download_image(image_url)
+        
+        logger.info(f"Image generated successfully with Gemini 2.5 Flash Image")
         
         return {
             "image_path": image_path,
@@ -189,7 +204,7 @@ async def generate_image(
         }
         
     except Exception as e:
-        logger.error(f"Error generating image: {e}")
+        logger.error(f"Error generating image: {e}", exc_info=True)
         raise
 
 
