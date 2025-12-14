@@ -39,6 +39,8 @@ ENV/
 
 # Data
 data/embeddings.db
+data/chroma_db/
+data/generated_images/
 data/documents/*
 !data/documents/.gitkeep
 *.ogg
