@@ -117,10 +117,12 @@ async def generate_image(
     style: str = "vivid"
 ) -> Dict[str, Any]:
     """
-    Generate an image using Gemini 2.0 Flash via OpenRouter.
+    Generate an image using Flux.2 Pro via OpenRouter.
     """
     try:
-        logger.info(f"Generating image with Gemini: {prompt[:100]}...")
+        import base64
+        
+        logger.info(f"Generating image with Gemini 2.5 Flash Image: {prompt[:100]}...")
         
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -129,6 +131,14 @@ async def generate_image(
             "X-Title": "Multi-Tool Assistant"
         }
         
+        # Gemini 2.5 Flash Image требует modalities и image_config
+        aspect_ratio_map = {
+            "1024x1024": "1:1",
+            "1024x1792": "9:16",
+            "1792x1024": "16:9"
+        }
+        aspect_ratio = aspect_ratio_map.get(size, "1:1")
+        
         payload = {
             "model": IMAGE_GENERATION_MODEL,
             "messages": [
@@ -136,7 +146,11 @@ async def generate_image(
                     "role": "user",
                     "content": prompt
                 }
-            ]
+            ],
+            "modalities": ["image", "text"],
+            "image_config": {
+                "aspect_ratio": aspect_ratio
+            }
         }
         
         api_url = f"{OPENROUTER_BASE_URL}/chat/completions"
@@ -146,7 +160,7 @@ async def generate_image(
                 api_url,
                 headers=headers,
                 json=payload,
-                timeout=aiohttp.ClientTimeout(total=60)
+                timeout=aiohttp.ClientTimeout(total=90)
             ) as response:
                 response_text = await response.text()
                 
@@ -156,27 +170,100 @@ async def generate_image(
                 
                 result = await response.json()
         
-        content = result['choices'][0]['message']['content']
-        logger.debug(f"Response: {content[:200]}")
+        # Gemini returns image in different formats
+        message = result['choices'][0]['message']
+        message_content = message.get('content', '')
+        images = message.get('images', [])
         
+        # Check images field first (Gemini format)
+        if images:
+            img = images[0]
+            if isinstance(img, dict):
+                img_url_data = img.get('image_url', {})
+                if isinstance(img_url_data, dict):
+                    image_data = img_url_data.get('url')
+                else:
+                    image_data = img_url_data
+            else:
+                image_data = img
+            
+            if image_data:
+                if image_data.startswith('data:image'):
+                    base64_data = image_data.split(',')[1]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"generated_{timestamp}.png"
+                    filepath = GENERATED_IMAGES_DIR / filename
+                    
+                    async with aiofiles.open(filepath, 'wb') as f:
+                        await f.write(base64.b64decode(base64_data))
+                    
+                    logger.info(f"Image saved to: {filepath}")
+                    return {
+                        "image_path": filepath,
+                        "revised_prompt": prompt,
+                        "url": image_data,
+                        "original_prompt": prompt
+                    }
+                else:
+                    image_path = await download_image(image_data)
+                    return {
+                        "image_path": image_path,
+                        "revised_prompt": prompt,
+                        "url": image_data,
+                        "original_prompt": prompt
+                    }
+        
+        # Check if content is array (multimodal response)
+        if isinstance(message_content, list):
+            for item in message_content:
+                if item.get('type') == 'image_url':
+                    image_data = item['image_url']['url']
+                    # Check if base64
+                    if image_data.startswith('data:image'):
+                        # Extract base64 data
+                        base64_data = image_data.split(',')[1]
+                        # Save directly from base64
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"generated_{timestamp}.png"
+                        filepath = GENERATED_IMAGES_DIR / filename
+                        
+                        async with aiofiles.open(filepath, 'wb') as f:
+                            await f.write(base64.b64decode(base64_data))
+                        
+                        logger.info(f"Image saved to: {filepath}")
+                        
+                        return {
+                            "image_path": filepath,
+                            "revised_prompt": prompt,
+                            "url": image_data,
+                            "original_prompt": prompt
+                        }
+                    else:
+                        # Regular URL
+                        image_path = await download_image(image_data)
+                        return {
+                            "image_path": image_path,
+                            "revised_prompt": prompt,
+                            "url": image_data,
+                            "original_prompt": prompt
+                        }
+        
+        # Fallback: try to extract URL from text
         import re
-        image_url_match = re.search(r'!\[.*?\]\((https://[^)]+)\)', content)
-        if not image_url_match:
-            image_url_match = re.search(r'(https://[^\s<>"]+\.(?:png|jpg|jpeg|webp|gif))', content)
+        if isinstance(message_content, str):
+            image_url_match = re.search(r'(https://[^\s<>"]+\.(?:png|jpg|jpeg|webp|gif))', message_content)
+            if image_url_match:
+                image_url = image_url_match.group(1)
+                image_path = await download_image(image_url)
+                return {
+                    "image_path": image_path,
+                    "revised_prompt": prompt,
+                    "url": image_url,
+                    "original_prompt": prompt
+                }
         
-        if not image_url_match:
-            logger.error(f"No image URL in response: {content[:300]}")
-            raise Exception(f"No image URL found")
-        
-        image_url = image_url_match.group(1)
-        image_path = await download_image(image_url)
-        
-        return {
-            "image_path": image_path,
-            "revised_prompt": prompt,
-            "url": image_url,
-            "original_prompt": prompt
-        }
+        logger.error(f"No image found in response: {message_content}")
+        raise Exception(f"No image found in response")
         
     except Exception as e:
         logger.error(f"Error generating image: {e}")
