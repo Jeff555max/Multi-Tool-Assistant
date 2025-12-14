@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 import json
 
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, USE_PROXYAPI, DATA_DIR
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, IMAGE_GENERATION_MODEL, DATA_DIR
 from utils.logging import logger
 
 
@@ -117,37 +117,39 @@ async def generate_image(
     style: str = "vivid"
 ) -> Dict[str, Any]:
     """
-    Generate an image using DALL-E API.
+    Generate an image using Gemini 2.5 Flash via OpenRouter.
     
     Args:
         prompt: Text description of the image to generate
-        size: Image size (256x256, 512x512, 1024x1024, 1024x1792, 1792x1024)
-        quality: Image quality (standard, hd)
-        style: Image style (vivid, natural)
+        size: Image size (ignored for Gemini)
+        quality: Image quality (ignored for Gemini)
+        style: Image style (ignored for Gemini)
     
     Returns:
         Dictionary with 'image_path', 'revised_prompt', and 'url'
     """
     try:
-        logger.info(f"Generating image with DALL-E: {prompt[:100]}...")
+        logger.info(f"Generating image with Gemini 2.5 Flash: {prompt[:100]}...")
         
-        # Prepare API request
+        # Prepare API request for OpenRouter
         headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/your-repo",
+            "X-Title": "Multi-Tool Assistant"
         }
         
         payload = {
-            "model": "dall-e-3",
-            "prompt": prompt,
-            "n": 1,
-            "size": size,
-            "quality": quality,
-            "style": style
+            "model": IMAGE_GENERATION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Generate an image: {prompt}"
+                }
+            ]
         }
         
-        # Determine API URL based on ProxyAPI usage
-        api_url = f"{OPENAI_BASE_URL}/images/generations"
+        api_url = f"{OPENROUTER_BASE_URL}/chat/completions"
         
         # Make API request
         async with aiohttp.ClientSession() as session:
@@ -158,24 +160,30 @@ async def generate_image(
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(f"DALL-E API error: {error_text}")
-                    raise Exception(f"DALL-E API error: {response.status}")
+                    logger.error(f"OpenRouter API error: {error_text}")
+                    raise Exception(f"OpenRouter API error: {response.status}")
                 
                 result = await response.json()
         
-        # Extract image data
-        image_data = result['data'][0]
-        image_url = image_data['url']
-        revised_prompt = image_data.get('revised_prompt', prompt)
+        # Extract image URL from response
+        content = result['choices'][0]['message']['content']
         
-        logger.info(f"Image generated successfully. Revised prompt: {revised_prompt[:100]}...")
+        # Gemini returns markdown with image URL
+        import re
+        image_url_match = re.search(r'!\[.*?\]\((https://.*?)\)', content)
+        if not image_url_match:
+            raise Exception("No image URL found in response")
+        
+        image_url = image_url_match.group(1)
+        
+        logger.info(f"Image generated successfully with Gemini")
         
         # Download image
         image_path = await download_image(image_url)
         
         return {
             "image_path": image_path,
-            "revised_prompt": revised_prompt,
+            "revised_prompt": prompt,
             "url": image_url,
             "original_prompt": prompt
         }
@@ -226,6 +234,7 @@ async def generate_image_variations(
 ) -> list:
     """
     Generate variations of an existing image.
+    Note: This feature is not supported by Gemini model.
     
     Args:
         image_path: Path to source image
@@ -235,50 +244,6 @@ async def generate_image_variations(
     Returns:
         List of paths to generated variations
     """
-    try:
-        logger.info(f"Generating {n} variations of image: {image_path}")
-        
-        # Prepare multipart form data
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
-        }
-        
-        data = aiohttp.FormData()
-        data.add_field('image', 
-                      open(image_path, 'rb'),
-                      filename=image_path.name,
-                      content_type='image/png')
-        data.add_field('n', str(n))
-        data.add_field('size', size)
-        
-        # Determine API URL based on ProxyAPI usage
-        api_url = f"{OPENAI_BASE_URL}/images/variations"
-        
-        # Make API request
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                api_url,
-                headers=headers,
-                data=data
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    logger.error(f"DALL-E variations API error: {error_text}")
-                    raise Exception(f"API error: {response.status}")
-                
-                result = await response.json()
-        
-        # Download all variations
-        variation_paths = []
-        for i, image_data in enumerate(result['data']):
-            url = image_data['url']
-            path = await download_image(url)
-            variation_paths.append(path)
-        
-        logger.info(f"Generated {len(variation_paths)} variations successfully")
-        return variation_paths
-        
-    except Exception as e:
-        logger.error(f"Error generating variations: {e}")
-        raise
+    logger.warning("Image variations not supported by Gemini model")
+    raise NotImplementedError("Image variations not supported by Gemini 2.5 Flash model")
 

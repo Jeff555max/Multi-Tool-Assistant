@@ -23,6 +23,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY is not set in .env file")
 
+# OpenRouter Configuration (для генерации изображений)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", OPENAI_API_KEY)
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
 # ProxyAPI Configuration (для работы в России без VPN)
 USE_PROXYAPI = os.getenv("USE_PROXYAPI", "true").lower() == "true"
 PROXYAPI_BASE_URL = "https://api.proxyapi.ru/openai/v1"
@@ -53,13 +57,10 @@ GPT_MODEL = "gpt-4o"
 GPT_MINI_MODEL = "gpt-4o-mini"
 WHISPER_MODEL = "whisper-1"
 TTS_MODEL = "tts-1"
-VISION_MODEL = "gpt-4o"
-DALLE_MODEL = "dall-e-3"
+VISION_MODEL = "gpt-4o"  # GPT-4o для анализа изображений
 
-# DALL-E Configuration
-DALLE_DEFAULT_SIZE = "1024x1024"  # Options: 1024x1024, 1024x1792, 1792x1024
-DALLE_DEFAULT_QUALITY = "standard"  # Options: standard, hd
-DALLE_DEFAULT_STYLE = "vivid"  # Options: vivid, natural
+# Image Generation Model (через OpenRouter)
+IMAGE_GENERATION_MODEL = "google/gemini-2.0-flash-exp:free"  # Gemini 2.5 Flash для генерации изображений
 
 # Database Configuration
 DB_PATH = BASE_DIR / os.getenv("DB_PATH", "data/embeddings.db")
